@@ -57,7 +57,13 @@ async def handle_message(message: types.Message):
         await message.answer("Произошла ошибка при обработке запроса. Попробуйте позже.")
 
 async def main():
+    # Сбрасываем вебхук и удаляем все ожидающие обновления (убивает конфликт)
+    await bot.delete_webhook(drop_pending_updates=True)
+    
+    # Запускаем HTTP-сервер для Render
     asyncio.create_task(run_web_server())
+    
+    # Запускаем бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
