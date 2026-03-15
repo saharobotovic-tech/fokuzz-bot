@@ -41,16 +41,13 @@ async def start_cmd(message: types.Message):
 @dp.message()
 async def handle_message(message: types.Message):
     try:
-        # Здесь будет логика с OpenRouter
         user_text = message.text or "Без текста"
         
-        # Если есть фото
         if message.photo:
             await message.answer("Фото получено! Обработка через LLM скоро будет...")
         else:
-            # Простой ответ через OpenRouter
             completion = client.chat.completions.create(
-                model="model=google/gemini-2.0-flash-exp:free",
+                model="google/gemini-2.0-flash-exp:free",
                 messages=[{"role": "user", "content": user_text}]
             )
             response = completion.choices[0].message.content
@@ -60,10 +57,7 @@ async def handle_message(message: types.Message):
         await message.answer("Произошла ошибка при обработке запроса. Попробуйте позже.")
 
 async def main():
-    # Запускаем HTTP-сервер для Render
     asyncio.create_task(run_web_server())
-    
-    # Запускаем бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
