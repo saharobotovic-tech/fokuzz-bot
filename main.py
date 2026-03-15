@@ -1,108 +1,70 @@
 import asyncio
 import logging
-import os
-
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command, CommandStart
-from aiogram.types import Message
+from aiogram.filters import Command
+import os
+from aiohttp import web
 from openai import OpenAI
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-
-# Получение токена Telegram из переменной окружения
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TELEGRAM_BOT_TOKEN:
-    raise ValueError("Telegram bot token not found in environment variables.")
-
-# Получение API-ключа OpenRouter из переменной окружения
+# Настройки
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-if not OPENROUTER_API_KEY:
-    raise ValueError("OpenRouter API key not found in environment variables.")
 
-# Инициализация бота и диспетчера
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Инициализация клиента OpenAI (OpenRouter)
-client = OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
+logging.basicConfig(level=logging.INFO)
 
-# Контекст диалога (для простоты - один контекст на пользователя)
-user_contexts = {}
+# Клиент OpenRouter
+client = OpenAI(
+    api_key=OPENROUTER_API_KEY,
+    base_url="https://openrouter.ai/api/v1"
+)
 
+# Простой HTTP-сервер для Render
+async def handle_health(request):
+    return web.Response(text="OK")
 
-async def get_llm_response(prompt, user_id):
-    """
-    Отправляет запрос в LLM и возвращает ответ.
-    """
-    model = "deepseek/deepseek-r1-0528-qwen3-8b:free"  # Выберите подходящую модель
-    if user_id not in user_contexts:
-        user_contexts[user_id] = []
+async def run_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 10000)
+    await site.start()
+    logging.info("Health check server started on port 10000")
 
-    user_contexts[user_id].append({"role": "user", "content": prompt})
+@dp.message(Command("start"))
+async def start_cmd(message: types.Message):
+    await message.answer("Привет! Я бот, работающий через нейросеть. Отправь мне фото или текст.")
 
-    try:
-        completion = client.chat.completions.create(
-            model=model,
-            messages=user_contexts[user_id],
-            max_tokens=1024,
-        )
-
-        response_text = completion.choices[0].message.content
-
-        user_contexts[user_id].append({"role": "assistant", "content": response_text})
-        # Ограничиваем контекст до последних нескольких сообщений (например, 5)
-        user_contexts[user_id] = user_contexts[user_id][-5:]
-        return response_text
-    except Exception as e:
-        logging.error(f"Ошибка при запросе к LLM: {e}")
-        return "Произошла ошибка при обработке запроса. Попробуйте позже."
-
-
-# Обработчик команды /start
-@dp.message(CommandStart())
-async def command_start_handler(message: Message) -> None:
-    """
-    Этот обработчик запускается, когда пользователь отправляет команду `/start`
-    """
-    await message.answer(
-        f"Привет, {message.from_user.first_name}!\nЯ бот, который может общаться с вами через LLM.",
-    )
-
-
-# Обработчик команды /help
-@dp.message(Command("help"))
-async def command_help_handler(message: Message) -> None:
-    """
-    Этот обработчик запускается, когда пользователь отправляет команду `/help`
-    """
-    await message.answer(
-        "Я бот для общения с LLM.\n"
-        "Просто отправьте мне сообщение, и я попробую на него ответить.\n"
-        "Команды:\n"
-        "/start - Начать работу\n"
-        "/help - Получить помощь",
-    )
-
-
-# Обработчик текстовых сообщений
 @dp.message()
-async def echo_handler(message: types.Message) -> None:
-    """
-    Этот обработчик обрабатывает все текстовые сообщения, отправленные боту.
-    """
-    user_id = message.from_user.id
-    prompt = message.text
-    response = await get_llm_response(prompt, user_id)
-    await message.answer(response)
+async def handle_message(message: types.Message):
+    try:
+        # Здесь будет логика с OpenRouter
+        user_text = message.text or "Без текста"
+        
+        # Если есть фото
+        if message.photo:
+            await message.answer("Фото получено! Обработка через LLM скоро будет...")
+        else:
+            # Простой ответ через OpenRouter
+            completion = client.chat.completions.create(
+                model="deepseek/deepseek-r1:free",
+                messages=[{"role": "user", "content": user_text}]
+            )
+            response = completion.choices[0].message.content
+            await message.answer(response)
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        await message.answer("Произошла ошибка при обработке запроса. Попробуйте позже.")
 
-
-async def main() -> None:
-    """
-    Запуск бота.
-    """
+async def main():
+    # Запускаем HTTP-сервер для Render
+    asyncio.create_task(run_web_server())
+    
+    # Запускаем бота
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
