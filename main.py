@@ -50,7 +50,7 @@ async def handle_message(message: types.Message):
         else:
             # Простой ответ через OpenRouter
             completion = client.chat.completions.create(
-                model="model="google/gemini-2.0-flash-exp:free",
+                model="model=google/gemini-2.0-flash-exp:free",
                 messages=[{"role": "user", "content": user_text}]
             )
             response = completion.choices[0].message.content
