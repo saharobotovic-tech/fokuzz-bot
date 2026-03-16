@@ -10,10 +10,20 @@ from openai import OpenAI
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+# Проверка наличия ключей
+if not BOT_TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN не найден!")
+if not OPENROUTER_API_KEY:
+    raise ValueError("OPENROUTER_API_KEY не найден!")
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-logging.basicConfig(level=logging.INFO)
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 # Клиент OpenRouter
 client = OpenAI(
@@ -41,19 +51,37 @@ async def start_cmd(message: types.Message):
 @dp.message()
 async def handle_message(message: types.Message):
     try:
-        user_text = message.text or "Без текста"
+        # Проверяем, есть ли текст
+        if not message.text:
+            await message.answer("Пожалуйста, отправь текстовое сообщение.")
+            return
+            
+        user_text = message.text
+        logging.info(f"Получено сообщение: {user_text[:50]}...")
         
+        # Если есть фото
         if message.photo:
             await message.answer("Фото получено! Обработка через LLM скоро будет...")
-        else:
+            # Здесь потом добавим обработку фото
+            return
+        
+        # Отправляем в OpenRouter
+        try:
             completion = client.chat.completions.create(
                 model="google/gemini-2.0-flash-exp:free",
-                messages=[{"role": "user", "content": user_text}]
+                messages=[{"role": "user", "content": user_text}],
+                timeout=30
             )
             response = completion.choices[0].message.content
             await message.answer(response)
+            logging.info("Ответ успешно отправлен")
+            
+        except Exception as e:
+            logging.error(f"Ошибка OpenRouter: {str(e)}")
+            await message.answer("Ошибка при обращении к нейросети. Попробуй позже.")
+            
     except Exception as e:
-        logging.error(f"Ошибка: {e}")
+        logging.error(f"Необработанная ошибка: {str(e)}", exc_info=True)
         await message.answer("Произошла ошибка при обработке запроса. Попробуйте позже.")
 
 async def main():
@@ -64,6 +92,7 @@ async def main():
     asyncio.create_task(run_web_server())
     
     # Запускаем бота
+    logging.info("Бот запускается...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
